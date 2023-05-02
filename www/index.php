@@ -1,6 +1,8 @@
 <?php
 //Author: simonmicro 2022
 
+$debug = false;
+
 header("Access-Control-Allow-Origin: *"); //Allow access from everywhere...
 $code = 200;
 
@@ -9,11 +11,12 @@ $body = json_decode(file_get_contents('php://input'));
 
 //Fake API
 $result = null;
+$_GET['path'] = $_SERVER['REQUEST_URI'];
 if(isset($_GET['path'])) {
     //Any notification/[version] will be answered here
     if(preg_match('/notification.*/', $_GET['path'])) {
         $result = new stdClass;
-        $result->message = 'Fake API endpoint for v1.30.3116.68 active and reachable (contacted at ' . date('r') . ').';
+        //$result->message = 'Fake API endpoint for v1.30.3116.68 active and reachable (contacted at ' . date('r') . ').';
         $result->vpn = false; //Idk
         $result->www = false; //Idk
     } else if(isset($body->license) && preg_match('/subscription.*/', $_GET['path'])) {
@@ -22,6 +25,8 @@ if(isset($_GET['path'])) {
         $license = null;
         //The stylesheet determines what is shown on the dashboard (and by the plan). As default we change the colors of any text.
         $stylesheet = '';
+        $user = md5(base64_encode($body->license));
+        $url_key = substr($user, 0, 8);
         if(preg_match('/.*premium/', $body->license)) {
             $license = 'premium';
         } else if(preg_match('/.*enterprise/', $body->license)) {
@@ -29,15 +34,18 @@ if(isset($_GET['path'])) {
             $stylesheet .= file_get_contents('enterprise.css');
             //Now fix some too aggressive display strategies by appending their overrides...
             $stylesheet .= file_get_contents('enterprise_fix.css');
+            $stylesheet = preg_replace('/(\.enterprise)([\.\ ])/', '$1-'.$url_key.'$2', $stylesheet);
         } else if(preg_match('/.*ultimate/', $body->license)) {
             $license = 'enterprise_plus';
             //Load the new css file and change all invisible blocks to visible (this will show a little bit too much, but whatever...)
-            $stylesheet .= file_get_contents('enterprise.css');
-            $stylesheet = preg_replace('/(enterprise)/', '$1-temp-prefix', $stylesheet);
-            $stylesheet = preg_replace('/(enterprise)(-temp-prefix-plus)/', '$1', $stylesheet);
-            $stylesheet = preg_replace('/(enterprise)(-temp-prefix)/', '$1-plus', $stylesheet);
-            $stylesheet = preg_replace('/(display:.?)none.?$/m', '$1inline-block', $stylesheet); //This WILL SHOW TOO MUCH... So we'll need a fix file...
-            $stylesheet .= file_get_contents('ultimate_fix.css');
+            //TODO: add conditions for versions <= 1003234574059 / < 1003234794095
+            $stylesheet .= file_get_contents('enterprise_plus.css');
+            //$stylesheet = preg_replace('/(enterprise)/', '$1-temp-prefix', $stylesheet);
+            //$stylesheet = preg_replace('/(enterprise)(-temp-prefix-plus)/', '$1', $stylesheet);
+            //$stylesheet = preg_replace('/(enterprise)(-temp-prefix)/', '$1-plus', $stylesheet);
+            //$stylesheet = preg_replace('/(display:.?)none.?$/m', '$1inline-block', $stylesheet); //This WILL SHOW TOO MUCH... So we'll need a fix file...
+            //$stylesheet .= file_get_contents('ultimate_fix.css');
+            $stylesheet = preg_replace('/(\.enterprise-plus)([\.\ ])/', '$1-'.$url_key.'$2', $stylesheet);
         }
         $stylesheet .= "* { color: rgb(57, 83, 120); }\n.dark * { color: rgb(200, 242, 242); }\n.navbar .navbar-brand { animation-name: pritunl-logo; animation-duration: 20s; animation-iteration-count: infinite; }\n@keyframes pritunl-logo { 0% { transform:rotate3d(1, 0, 0, 360deg); } 25% { transform:rotate3d(1, 0, 0, 0deg); } 50% { transform:rotate3d(0, 1, 0, 0deg); } 75% { transform:rotate3d(0, 1, 0, 360deg); } 100% { transform:rotate3d(0, 1, 0, 360deg); } }\n.footer-brand {visibility: hidden; }\n.footer-brand::before { visibility: visible; position: absolute; bottom: 0; right: 0; content: ''; background: url('https://" . $_SERVER['HTTP_HOST'] . "/logo.png'); background-size: cover; width: 1em; height: 1em; margin: 0.3em; }\n/* Generated for $license license */";
 
@@ -60,14 +68,15 @@ if(isset($_GET['path'])) {
             $result->active = $body->version < 1003031164068 ? $license != 'premium' : $license == 'enterprise_plus';
             $result->status = $state;
             $result->plan = $license;
-            $result->quantity = 42;
+            $result->url_key = $user;
+            $result->quantity = 420;
             $result->amount = 42;
             $result->credit = 42;
             $result->period_end = false;
             $result->trial_end = false;
             $result->cancel_at_period_end = false;
             $result->styles = new stdClass;
-            $result->styles->etag = 42;
+            $result->styles->etag = 0;
             $result->styles->last_modified = time();
             $result->styles->data = $stylesheet;
         }
@@ -81,7 +90,7 @@ if(isset($_GET['path'])) {
             $result->trial_end = false;
             $result->cancel_at_period_end = false;
             $result->styles = new stdClass;
-            $result->styles->etag = 42;
+            $result->styles->etag = 0;
             $result->styles->last_modified = time();
             $result->styles->data = $stylesheet;
         }
@@ -126,12 +135,15 @@ http_response_code($code);
 echo json_encode($result);
 
 //Should we log any request? Used for the development and debugging of this API
-if(false) {
+//if(false) {
+//if(true) {
+if($debug || isset($_SERVER['debug'])) {
     //Log request
-    file_put_contents('access.log', "\n" . date('r') . ":\t" . json_encode(array('head' => getallheaders(), 'body' => file_get_contents('php://input'), 'get' => $_GET, 'post' => $_POST, 'answer_code' => $code, 'answer' => $result)) . "\n", FILE_APPEND);
+    //file_put_contents('access.log', "\n" . date('r') . ":\t" . json_encode(array('head' => getallheaders(), 'body' => file_get_contents('php://input'), 'get' => $_GET, 'post' => $_POST, 'answer_code' => $code, 'answer' => $result)) . "\n", FILE_APPEND);
+    file_put_contents('/tmp/access.log', "\n" . date('r') . ":\t" . json_encode(array('head' => getallheaders(), 'body' => file_get_contents('php://input'), 'get' => $_GET, 'post' => $_POST, 'answer_code' => $code, 'answer' => $result, 'server' => $_SERVER)) . "\n", FILE_APPEND);
 
     //GET operator to clear log file
-    if(isset($_GET['clear']))
-        file_put_contents('access.log', '');
+    //if(isset($_GET['clear']))
+    //    file_put_contents('access.log', '');
 }
 ?>
